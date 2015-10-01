@@ -23,6 +23,7 @@ import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.exception.IncompatibleTypeException;
 import net.imglib2.img.Img;
 import net.imglib2.img.ImgFactory;
+import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.type.numeric.real.FloatType;
 import net.imglib2.util.RealSum;
 import net.imglib2.util.Util;
@@ -358,7 +359,7 @@ public class MVDeconvolution
 					@Override
 					public Void call() throws Exception
 					{
-						computeQuotient( portion.getStartPosition(), portion.getLoopSize(), tmp1, processingData.getImage() );
+						computeQuotient( portion.getStartPosition(), portion.getLoopSize(), tmp1, processingData.getImage(), processingData.getWeight() );
 						return null;
 					}
 				});
@@ -521,38 +522,49 @@ public class MVDeconvolution
 	 * @param loopSize
 	 * @param psiBlurred
 	 * @param observedImg
+	 * @param weights
 	 */
 	private static final void computeQuotient(
 			final long start,
 			final long loopSize,
 			final RandomAccessibleInterval< FloatType > psiBlurred,
-			final RandomAccessibleInterval< FloatType > observedImg )
+			final RandomAccessibleInterval< FloatType > observedImg,
+			final RandomAccessibleInterval< FloatType > weights )
 	{
 		final IterableInterval< FloatType > psiBlurredIterable = Views.iterable( psiBlurred );
 		final IterableInterval< FloatType > observedImgIterable = Views.iterable( observedImg );
+		final IterableInterval< FloatType > weightsIterable = Views.iterable( weights );
 
-		if ( psiBlurredIterable.iterationOrder().equals( observedImgIterable.iterationOrder() ) )
+		if (
+			psiBlurredIterable.iterationOrder().equals( observedImgIterable.iterationOrder() ) &&
+			psiBlurredIterable.iterationOrder().equals( weightsIterable.iterationOrder() ))
 		{
 			final Cursor< FloatType > cursorPsiBlurred = psiBlurredIterable.cursor();
 			final Cursor< FloatType > cursorImg = observedImgIterable.cursor();
+			final Cursor< FloatType > cursorWeights = weightsIterable.cursor();
 	
 			cursorPsiBlurred.jumpFwd( start );
 			cursorImg.jumpFwd( start );
+			cursorWeights.jumpFwd( start );
 	
 			for ( long l = 0; l < loopSize; ++l )
 			{
 				cursorPsiBlurred.fwd();
 				cursorImg.fwd();
-	
+
 				final float psiBlurredValue = cursorPsiBlurred.get().get();
 				final float imgValue = cursorImg.get().get();
-	
-				cursorPsiBlurred.get().set( imgValue / psiBlurredValue );
+
+				if ( cursorWeights.next().get() > 0 )
+					cursorPsiBlurred.get().set( imgValue / psiBlurredValue );
+				else
+					cursorPsiBlurred.get().set( 1 );
 			}
 		}
 		else
 		{
 			final RandomAccess< FloatType > raPsiBlurred = psiBlurred.randomAccess();
+			final RandomAccess< FloatType > raWeights = weights.randomAccess();
 			final Cursor< FloatType > cursorImg = observedImgIterable.localizingCursor();
 
 			cursorImg.jumpFwd( start );
@@ -561,11 +573,15 @@ public class MVDeconvolution
 			{
 				cursorImg.fwd();
 				raPsiBlurred.setPosition( cursorImg );
+				raWeights.setPosition( cursorImg );
 	
 				final float psiBlurredValue = raPsiBlurred.get().get();
 				final float imgValue = cursorImg.get().get();
 	
-				raPsiBlurred.get().set( imgValue / psiBlurredValue );
+				if ( raWeights.get().get() > 0 )
+					raPsiBlurred.get().set( imgValue / psiBlurredValue );
+				else
+					raPsiBlurred.get().set( 1 );
 			}
 		}
 	}
