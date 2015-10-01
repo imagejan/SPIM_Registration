@@ -108,8 +108,14 @@ public class Data_Explorer implements PlugIn
 
 	public static void main( String[] args )
 	{
+		System.out.println( System.getProperty("os.name") );
 		new ImageJ();
-		GenericLoadParseQueryXML.defaultXMLfilename = "/Users/spreibi/Documents/Microscopy/SPIM/HisYFP-SPIM//dataset.xml";
+		
+		if ( System.getProperty("os.name").toLowerCase().contains( "linux" ) )
+			GenericLoadParseQueryXML.defaultXMLfilename = "/home/preibisch/Documents/Microscopy/SPIM/HisYFP-SPIM//dataset_tp18.xml";
+		else
+			GenericLoadParseQueryXML.defaultXMLfilename = "/Users/spreibi/Documents/Microscopy/SPIM/HisYFP-SPIM//dataset_tp18.xml";
+
 		new Data_Explorer().run( null );
 	}
 }
