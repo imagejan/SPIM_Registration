@@ -24,6 +24,7 @@ import net.imglib2.exception.IncompatibleTypeException;
 import net.imglib2.img.Img;
 import net.imglib2.img.ImgFactory;
 import net.imglib2.img.display.imagej.ImageJFunctions;
+import net.imglib2.multithreading.SimpleMultiThreading;
 import net.imglib2.type.numeric.real.FloatType;
 import net.imglib2.util.RealSum;
 import net.imglib2.util.Util;
@@ -34,13 +35,14 @@ import spim.process.fusion.FusionHelper;
 import spim.process.fusion.ImagePortion;
 import spim.process.fusion.deconvolution.MVDeconFFT.PSFTYPE;
 import spim.process.fusion.export.DisplayImage;
+import spim.process.fusion.export.ImgExport;
 
 public class MVDeconvolution
 {
 	// if you want to start from a certain iteration
 	public static String initialImage = null;
 
-	public static boolean setToAvg = false;
+	public static boolean setToAvg = true;
 
 	// check in advance if values are reasonable
 	public static boolean checkNumbers = true;
@@ -123,7 +125,12 @@ public class MVDeconvolution
 					t.set( (float)avg );
 			}
 		}
-
+		/*
+		for ( final MVDeconFFT d : views.getViews() )
+			for ( final FloatType t : Views.iterable( d.getWeight() ) )
+				if ( t.get() > 0 )
+					t.set( 1 );
+		*/
 		// instantiate the temporary images
 		this.tmp1 = views.imgFactory().create( psi, new FloatType() );
 		this.tmp2 = views.imgFactory().create( psi, new FloatType() );
@@ -359,14 +366,19 @@ public class MVDeconvolution
 					@Override
 					public Void call() throws Exception
 					{
-						computeQuotient( portion.getStartPosition(), portion.getLoopSize(), tmp1, processingData.getImage(), processingData.getWeight() );
+						computeQuotient( portion.getStartPosition(), portion.getLoopSize(), tmp1, processingData.getImage() );
 						return null;
 					}
 				});
 			}
 
 			execTasks( tasks, nThreads, "compute quotient" );
-
+			
+			//new DisplayImage().exportImage( processingData.getImage(), "img" );
+			//new DisplayImage().exportImage( processingData.getWeight(), "weight" );
+			//new DisplayImage().exportImage( tmp1, "tmp1" );
+			//SimpleMultiThreading.threadHaltUnClean();
+			
 			//
 			// blur the residuals image with the kernel
 			// (this cannot be don in-place as it might be computed in blocks sequentially,
@@ -528,25 +540,19 @@ public class MVDeconvolution
 			final long start,
 			final long loopSize,
 			final RandomAccessibleInterval< FloatType > psiBlurred,
-			final RandomAccessibleInterval< FloatType > observedImg,
-			final RandomAccessibleInterval< FloatType > weights )
+			final RandomAccessibleInterval< FloatType > observedImg )
 	{
 		final IterableInterval< FloatType > psiBlurredIterable = Views.iterable( psiBlurred );
 		final IterableInterval< FloatType > observedImgIterable = Views.iterable( observedImg );
-		final IterableInterval< FloatType > weightsIterable = Views.iterable( weights );
 
-		if (
-			psiBlurredIterable.iterationOrder().equals( observedImgIterable.iterationOrder() ) &&
-			psiBlurredIterable.iterationOrder().equals( weightsIterable.iterationOrder() ))
+		if ( psiBlurredIterable.iterationOrder().equals( observedImgIterable.iterationOrder() ) )
 		{
 			final Cursor< FloatType > cursorPsiBlurred = psiBlurredIterable.cursor();
 			final Cursor< FloatType > cursorImg = observedImgIterable.cursor();
-			final Cursor< FloatType > cursorWeights = weightsIterable.cursor();
-	
+
 			cursorPsiBlurred.jumpFwd( start );
 			cursorImg.jumpFwd( start );
-			cursorWeights.jumpFwd( start );
-	
+
 			for ( long l = 0; l < loopSize; ++l )
 			{
 				cursorPsiBlurred.fwd();
@@ -555,16 +561,15 @@ public class MVDeconvolution
 				final float psiBlurredValue = cursorPsiBlurred.get().get();
 				final float imgValue = cursorImg.get().get();
 
-				if ( cursorWeights.next().get() > 0 )
+				if ( imgValue > 0 )
 					cursorPsiBlurred.get().set( imgValue / psiBlurredValue );
 				else
-					cursorPsiBlurred.get().set( 1 );
+					cursorPsiBlurred.get().set( 1 ); // no image data, quotient=1
 			}
 		}
 		else
 		{
 			final RandomAccess< FloatType > raPsiBlurred = psiBlurred.randomAccess();
-			final RandomAccess< FloatType > raWeights = weights.randomAccess();
 			final Cursor< FloatType > cursorImg = observedImgIterable.localizingCursor();
 
 			cursorImg.jumpFwd( start );
@@ -573,15 +578,14 @@ public class MVDeconvolution
 			{
 				cursorImg.fwd();
 				raPsiBlurred.setPosition( cursorImg );
-				raWeights.setPosition( cursorImg );
 	
 				final float psiBlurredValue = raPsiBlurred.get().get();
 				final float imgValue = cursorImg.get().get();
 	
-				if ( raWeights.get().get() > 0 )
+				if ( imgValue > 0 )
 					raPsiBlurred.get().set( imgValue / psiBlurredValue );
 				else
-					raPsiBlurred.get().set( 1 );
+					raPsiBlurred.get().set( 1 ); // no image data, quotient=1
 			}
 		}
 	}

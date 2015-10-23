@@ -59,11 +59,6 @@ public class ProcessForDeconvolution
 {
 	public static enum WeightType { WEIGHTS_ONLY, NO_WEIGHTS, VIRTUAL_WEIGHTS, PRECOMPUTED_WEIGHTS, LOAD_WEIGHTS };
 
-	public static int defaultBlendingRangeNumber = 25;
-	public static int defaultBlendingBorderNumber = 15;
-	public static int[] defaultBlendingRange = new int[]{ defaultBlendingRangeNumber, defaultBlendingRangeNumber, defaultBlendingRangeNumber };
-	public static int[] defaultBlendingBorder = null;
-
 	final protected SpimData2 spimData;
 	final protected List< ViewId > viewIdsToProcess;
 	final BoundingBoxGUI bb;
@@ -273,11 +268,6 @@ public class ProcessForDeconvolution
 			}
 
 			taskExecutor.shutdown();
-
-			// do not accept 0 values in the data
-			for ( final FloatType t : Views.iterable( transformedImg ) )
-				if ( t.get() < MVDeconvolution.minValue )
-					t.set( MVDeconvolution.minValue );
 
 			// extract PSFs if wanted
 			if ( extractPSFs )
